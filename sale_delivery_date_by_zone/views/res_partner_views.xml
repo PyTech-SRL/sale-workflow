@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="view_partner_form_inherit" model="ir.ui.view">
+        <field name="name">res.partner.form.inherit</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form" />
+        <field name="arch" type="xml">
+            <field name="delivery_time_preference" position="before">
+                <field name="use_custom_delivery_preferences" />
+            </field>
+
+            <field name="delivery_time_preference" position="attributes">
+                <attribute name="attrs">
+                    {'invisible': [('use_custom_delivery_preferences', '=', False)]}
+                </attribute>
+            </field>
+            <xpath
+                expr="//div[field[@name='delivery_time_window_ids']]"
+                position="attributes"
+            >
+                <attribute name="attrs">
+                    {'invisible': [
+                        '|',
+                        ('use_custom_delivery_preferences', '=', False),
+                        ('delivery_time_preference', '!=', 'time_windows')
+                        ]}
+                </attribute>
+            </xpath>
+            <field name="order_delivery_cutoff_preference" position="attributes">
+                <attribute name="attrs">
+                    {'invisible': [('use_custom_delivery_preferences', '=', False)]}
+                </attribute>
+            </field>
+            <field name="cutoff_time" position="attributes">
+                <attribute name="attrs">
+                    {'invisible': [
+                        '|',
+                        ('use_custom_delivery_preferences', '=', False),
+                        ('order_delivery_cutoff_preference', '!=', 'partner_cutoff')
+                        ]}
+                </attribute>
+            </field>
+        </field>
+    </record>
+</odoo>
