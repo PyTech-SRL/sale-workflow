@@ -68,7 +68,8 @@ class SaleOrderLine(models.Model):
     def _prepare_procurement_values_time_windows(self, date_planned):
         # ORIGINAL
         if (
-            self.order_id.partner_shipping_id.delivery_time_preference != "time_windows"
+            self.order_id._get_delivery_preferences_source().delivery_time_preference
+            != "time_windows"
             # if a commitment_date is set we don't change the result as lead
             # time and delivery windows must have been considered
             or self.order_id.commitment_date
@@ -87,7 +88,7 @@ class SaleOrderLine(models.Model):
         date_planned_without_sec_lead = date_planned + timedelta(
             days=self.order_id.company_id.security_lead
         )
-        ops = self.order_id.partner_shipping_id
+        ops = self.order_id._get_delivery_preferences_source()
         next_preferred_date = ops.next_delivery_window_start_datetime(
             from_date=date_planned_without_sec_lead
         )
@@ -162,10 +163,10 @@ class SaleOrderLine(models.Model):
         return expected_date
 
     def _delivery_window_expected_date(self, expected_date):
-        partner = self.order_id.partner_shipping_id
-        if not partner or partner.delivery_time_preference == "anytime":
+        ps = self.order_id._get_delivery_preferences_source()
+        if not ps or ps.delivery_time_preference == "anytime":
             return expected_date
-        return partner.next_delivery_window_start_datetime(from_date=expected_date)
+        return ps.next_delivery_window_start_datetime(from_date=expected_date)
 
     @api.depends("order_id.expected_date")
     def _compute_qty_at_date(self):
@@ -185,16 +186,16 @@ class SaleOrderLine(models.Model):
         keep_same_day forces keeping the same day.
         """
         cutoff = self.order_id.get_cutoff_time()
-        partner = self.order_id.partner_shipping_id
+        ps = self.order_id._get_delivery_preferences_source()
         if not cutoff:
             if not self.order_id.warehouse_id.apply_cutoff:
                 _logger.debug(
-                    "No cutoff applied on order %s as partner %s is set to use "
+                    "No cutoff applied on order %s as %s is set to use "
                     "%s and warehouse %s doesn't apply cutoff."
                     % (
                         self.order_id,
-                        partner,
-                        partner.order_delivery_cutoff_preference,
+                        ps,
+                        ps.order_delivery_cutoff_preference,
                         self.order_id.warehouse_id,
                     )
                 )
@@ -202,7 +203,7 @@ class SaleOrderLine(models.Model):
                 _logger.warning(
                     "No cutoff applied on order %s. %s time not applied"
                     "on line %s."
-                    % (self.order_id, partner.order_delivery_cutoff_preference, self)
+                    % (self.order_id, ps.order_delivery_cutoff_preference, self)
                 )
             return
         new_date_planned = self._get_utc_cutoff_datetime(
@@ -212,7 +213,7 @@ class SaleOrderLine(models.Model):
             "%s applied on order %s. Date planned for line %s"
             " rescheduled from %s to %s"
             % (
-                partner.order_delivery_cutoff_preference,
+                ps.order_delivery_cutoff_preference,
                 self.order_id,
                 self,
                 date_planned,

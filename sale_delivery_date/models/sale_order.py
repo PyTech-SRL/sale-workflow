@@ -32,13 +32,13 @@ class SaleOrder(models.Model):
         res = super()._onchange_commitment_date()
         if res and "warning" in res:
             return res
-        ps = self.partner_shipping_id
+        ps = self._get_delivery_preferences_source()
         if ps and self.commitment_date and ps.delivery_time_preference != "anytime":
             if not ps.is_in_delivery_window(self.commitment_date):
                 return {"warning": self._commitment_date_no_delivery_window_match_msg()}
 
     def _commitment_date_no_delivery_window_match_msg(self):
-        ps = self.partner_shipping_id
+        ps = self._get_delivery_preferences_source()
         commitment_date = self.commitment_date
         if ps.delivery_time_preference == "workdays":
             message = _(
@@ -76,13 +76,22 @@ class SaleOrder(models.Model):
 
     def get_cutoff_time(self):
         self.ensure_one()
-        partner = self.partner_shipping_id
+        ps = self._get_delivery_preferences_source()
         if (
-            partner.order_delivery_cutoff_preference == "warehouse_cutoff"
+            ps.order_delivery_cutoff_preference == "warehouse_cutoff"
             and self.warehouse_id.apply_cutoff
         ):
             return self.warehouse_id.get_cutoff_time()
-        elif partner.order_delivery_cutoff_preference == "partner_cutoff":
-            return self.partner_shipping_id.get_cutoff_time()
+        elif ps.order_delivery_cutoff_preference == "partner_cutoff":
+            return ps.get_cutoff_time()
         else:
             return {}
+
+    def _get_delivery_preferences_source(self):
+        """
+        Retrieves the correct field for delivery preferences.
+        It's partner_shipping_id by default but can be modified
+        by other modules
+        """
+        self.ensure_one()
+        return self.partner_shipping_id
