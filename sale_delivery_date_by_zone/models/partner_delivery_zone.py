@@ -1,7 +1,10 @@
+# Copyright 2020 Camptocamp SA
 # Copyright 2023 Ooops404
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
+
+WORKDAYS = list(range(5))
 
 
 class PartnerDeliveryZone(models.Model):
