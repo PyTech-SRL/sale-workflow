@@ -19,61 +19,72 @@ class SaleOrder(models.Model):
 
     @api.depends("partner_id", "partner_shipping_id", "partner_invoice_id")
     def _compute_product_assortment_ids(self):
-        self.allowed_product_ids = False
-        self.has_allowed_products = False
         partner_field = (
             self.env["ir.config_parameter"]
             .sudo()
             .get_param("sale_order_product_assortment.partner_field", "partner_id")
         )
-        product_domain = []
-        if self[partner_field]:
-            filters_partner_domain = self.env["ir.filters"].search(
-                [("is_assortment", "=", True)]
-            )
-            filters_partner_domain = filters_partner_domain.filtered(
-                lambda x: x.all_partner_ids & self[partner_field]
-            )
-            if filters_partner_domain:
-                # use OR to combine allowed products
-                # and negate the blacklisted ones with AND
-                eval_product_domain = expression.OR(
-                    safe_eval(
-                        domain,
-                        {"datetime": datetime, "context_today": datetime.datetime.now},
+        filters_partner_domain = None
+        for so in self:
+            products = False
+            partner = so[partner_field]
+            if partner:
+                if filters_partner_domain is None:
+                    # search for filters only once
+                    filters_partner_domain = self.env["ir.filters"].search(
+                        [("is_assortment", "=", True)]
                     )
-                    for domain in filters_partner_domain.mapped("domain")
+                filters_partner_domain = filters_partner_domain.filtered(
+                    lambda x, partner=partner: partner in x.partner_ids
+                    # handle empty domain [] as False
+                    or partner.filtered_domain(
+                        x._get_eval_partner_domain() or expression.FALSE_DOMAIN
+                    )
                 )
-                whitelist_product_domain = expression.OR(
-                    [
-                        eval_product_domain,
+                if filters_partner_domain:
+                    # use OR to combine allowed products
+                    # and negate the blacklisted ones with AND
+                    eval_product_domain = expression.OR(
+                        safe_eval(
+                            domain,
+                            {
+                                "datetime": datetime,
+                                "context_today": datetime.datetime.now,
+                            },
+                        )
+                        for domain in filters_partner_domain.mapped("domain")
+                    )
+                    whitelist_product_domain = expression.OR(
                         [
-                            (
-                                "id",
-                                "in",
-                                filters_partner_domain.mapped(
-                                    "whitelist_product_ids.id"
-                                ),
-                            )
-                        ],
-                    ]
-                )
-                blacklist_product_domain = [
-                    (
-                        "id",
-                        "not in",
-                        filters_partner_domain.mapped("blacklist_product_ids.id"),
+                            eval_product_domain,
+                            [
+                                (
+                                    "id",
+                                    "in",
+                                    filters_partner_domain.mapped(
+                                        "whitelist_product_ids.id"
+                                    ),
+                                )
+                            ],
+                        ]
                     )
-                ]
-                product_domain = expression.AND(
-                    [whitelist_product_domain, blacklist_product_domain]
-                )
-            if product_domain:
-                self.allowed_product_ids = self.env["product.product"].search(
-                    product_domain
-                )
-            if self.allowed_product_ids:
-                self.has_allowed_products = True
+                    blacklist_product_domain = [
+                        (
+                            "id",
+                            "not in",
+                            filters_partner_domain.mapped("blacklist_product_ids.id"),
+                        )
+                    ]
+                    product_domain = expression.AND(
+                        [whitelist_product_domain, blacklist_product_domain]
+                    )
+                    products = self.env["product.product"].search(product_domain)
+            so.update(
+                {
+                    "allowed_product_ids": products,
+                    "has_allowed_products": bool(products),
+                }
+            )
 
     @api.onchange("partner_id", "partner_shipping_id", "partner_invoice_id")
     def _onchange_partner_id(self):
