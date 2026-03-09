@@ -21,15 +21,27 @@ class ProductProduct(models.Model):
         return super()._default_quick_uom_id()
 
     def _compute_process_qty_sale(self):
-        so_lines = self.env["sale.order.line"].search(
-            [("order_id", "=", self.env.context.get("parent_id"))]
+        so_lines_data = self.env["sale.order.line"].read_group(
+            [
+                ("order_id", "=", self.env.context.get("parent_id")),
+                ("product_id", "in", self.ids),
+            ],
+            [
+                "product_id",
+                "product_uom_qty:sum",
+            ],
+            [
+                "product_id",
+            ],
         )
-        for product in self:
-            product.qty_to_process = sum(
-                so_lines.filtered(lambda l: l.product_id == product).mapped(
-                    "product_uom_qty"
-                )
-            )
+
+        so_lines_products = self.env["product.product"].browse()
+        for so_line_data in so_lines_data:
+            product = self.env["product.product"].browse(so_line_data["product_id"][0])
+            so_lines_products |= product
+            product.qty_to_process = so_line_data["product_uom_qty"]
+
+        (self - so_lines_products).qty_to_process = 0
 
     @api.depends("so_line_ids")
     def _compute_process_qty(self):
